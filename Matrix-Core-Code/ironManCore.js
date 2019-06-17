@@ -12,6 +12,9 @@ var matrix_ip = '127.0.0.1';// Local IP
 var matrix_everloop_base_port = 20021;// Port for Everloop driver
 var matrix_device_leds = 0;// Holds amount of LEDs on MATRIX device
 
+var mqtt = require('mqtt');
+var client = mqtt.connect('mqtt://localhost', { port: 1883 });
+var Reactor = 'hermes/intent/'+snipsUserName+':arcReactor'; 
 var waitingToggle = false;
 
 var counter = 0;
@@ -112,47 +115,45 @@ setInterval(function(){
 //MQTT Stuff with Everloop//
 ////////////////////////////
 
-var mqtt = require('mqtt');
-var HOST = 'localhost';
-var client  = mqtt.connect('mqtt://' + HOST, { port: 1883 });
-
-//hermes/intent/account username: intentName
-var ReactorOff = 'hermes/intent/'+snipsUserName+':ArcReactorOff'; 
-var ReactorOn = 'hermes/intent/'+snipsUserName+':ArcReactorOn'; 
-
 client.on('connect', function() {
-	console.log("Connected to " + HOST);
+	console.log("Connected to localhost");
 
-	client.subscribe('hermes/hotword/default/detected');
+	client.subscribe(wakeword);
 
-	client.subscribe('hermes/dialogueManager/sessionEnded');
+	client.subscribe(sessionEnd);
 
-	client.subscribe(ReactorOff);
-
-	client.subscribe(ReactorOn);
+	client.subscribe(Reactor);
 
 });
 
 client.on('message', function(topic,message) {
-	if (topic == 'hermes/hotword/default/detected') {
-		console.log('Wakeword detected');
-	}
-
-	if (topic == 'hermes/dialogueManager/sessionEnded') {
-		console.log('Session Ended');
-	}
-
-	if (topic.startsWith(ReactorOff)) {
-		var payload = JSON.parse(message);
-		var name = payload["intent"]["intentName"];
-		var slots = payload["slots"];
-		console.log('Intent ${name} detected with slots ' + '{JSON.stringify(slots)}');
-		console.log('Reactor Off Detected');
-		waitingToggle = false;
-	}
-	else if (topic == ReactorOn) {
-		console.log('Reactor On Detected');
-		waitingToggle = true;
-
-	}
+  var message = JSON.parse(message);
+	switch(topic) {
+        // * On Wakeword
+        case wakeword:
+            console.log('Wakeword Detected');
+        break;
+        // * On Light State Change
+        case Reactor:
+            // Turn lights On/Off
+            try{
+                if (message.slots[0].value.value === 'on'){
+                    console.log('Reactor On Detected');
+                    waitingToggle = true;
+                }
+                else if(message.slots[0].value.value === 'off'){
+                    console.log('Reactor Off Detected');
+                    waitingToggle = false;
+                }
+            }
+            // Expect error if `on` or `off` is not heard
+            catch(e){
+                console.log('Did not receive an On/Off state')
+            }
+        break;
+        // * On Conversation End
+        case sessionEnd:
+            console.log('Session Ended\n');
+        break;
+}
 });
